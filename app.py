@@ -2,16 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="دشبورد هوشمند شیفت‌بندی", page_icon="📅", layout="wide")
+st.set_page_config(page_title="دشبورد شیفت‌بندی شهریور ۱۴۰۵", page_icon="📅", layout="wide")
 
-st.title("📅 دشبورد هوشمند شیفت‌بندی تیم پشتیبانی")
+st.title("📅 دشبورد هوشمند شیفت‌بندی - شهریور ۱۴۰۵")
 st.caption("سیستم ثبت تعاملی درخواست‌های کارشناسان و بهینه‌سازی خودکار شیفت‌ها")
 
-# مدیریت حافظه موقت برای ذخیره درخواست‌ها
-if "requests_list" not in st.session_state:
-    st.session_state.requests_list = []
-
-# لیست کارشناسان و شیفت‌ها
+# لیست کامل ۲۱ کارشناس
 agents_list = [
     "Maryam Khojastehpoor",
     "Parastoo Bolokbashi",
@@ -35,7 +31,16 @@ agents_list = [
     "Parastoo Niazi",
     "Maryam Ahmadii"
 ]
-days_list = [f"روز {d}" for d in range(1, 31)]
+
+# روزهای هفته برای شهریور ۱۴۰۵ (شروع از یکشنبه - ۱ شهریور)
+weekdays = ["یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه", "شنبه"]
+
+# ساخت لیست ۳۱ روز شهریور با تاریخ شمسی و روز هفته
+days_list = [f"{d} شهریور ({weekdays[(d - 1) % 7]})" for d in range(1, 32)]
+
+if "requests_list" not in st.session_state:
+    st.session_state.requests_list = []
+
 shift_types = ["مرخصی (OFF)", "ترجیح: شیفت صبح (08-16)", "ترجیح: شیفت عصر (14-22)", "عدم امکان شیفت شب"]
 
 # --- نوار سمت راست: فرم ثبت درخواست ---
@@ -43,14 +48,14 @@ st.sidebar.header("📝 ثبت درخواست کارشناس")
 
 with st.sidebar.form(key="request_form", clear_on_submit=True):
     selected_agent = st.selectbox("انتخاب کارشناس:", agents_list)
-    selected_day = st.selectbox("انتخاب روز:", days_list)
+    selected_day = st.selectbox("انتخاب تاریخ:", days_list)
     req_type = st.selectbox("نوع درخواست:", shift_types)
     submit_req = st.form_submit_button("➕ ثبت درخواست")
 
     if submit_req:
         new_entry = {
             "نام کارشناس": selected_agent,
-            "روز": selected_day,
+            "تاریخ": selected_day,
             "نوع درخواست": req_type,
             "وضعیت": "تاییدشده"
         }
@@ -82,15 +87,13 @@ if solve_button or st.session_state.requests_list:
     np.random.seed(42)
     shift_pool = ["08-16", "09-17", "10-18", "12-20", "14-22", "16-00", "10-14/16-20", "11-15/18-22", "OFF"]
     
-    # ساخت جدول پایه
-    matrix_data = {day: np.random.choice(shift_pool, size=21, p=[0.15, 0.12, 0.12, 0.1, 0.12, 0.1, 0.05, 0.04, 0.2]) for day in days_list}
+    matrix_data = {day: np.random.choice(shift_pool, size=len(agents_list), p=[0.15, 0.12, 0.12, 0.1, 0.12, 0.1, 0.05, 0.04, 0.2]) for day in days_list}
     df_res = pd.DataFrame(matrix_data, index=agents_list)
     df_res.index.name = "نام کارشناس"
 
-    # اعمال مستقیم درخواست‌های ثبت‌شده روی جدول شیفت
     for req in st.session_state.requests_list:
         agent = req["نام کارشناس"]
-        day = req["روز"]
+        day = req["تاریخ"]
         r_type = req["نوع درخواست"]
         
         if "مرخصی" in r_type:
@@ -101,15 +104,15 @@ if solve_button or st.session_state.requests_list:
             df_res.loc[agent, day] = "14-22"
 
     with tab1:
-        st.success(f"✅ شیفت‌بندی با لحاظ کردن {len(st.session_state.requests_list)} درخواست ثبت‌شده محاسبه شد!")
-        st.subheader("جدول چیدمان شیفت ۲۱ کارشناس در ۳۰ روز ماه")
+        st.success(f"✅ شیفت‌بندی شهریور ۱۴۰۵ با لحاظ کردن {len(st.session_state.requests_list)} درخواست ثبت‌شده محاسبه شد!")
+        st.subheader("جدول چیدمان شیفت ۲۱ کارشناس در ۳۱ روز شهریور ۱۴۰۵")
         st.dataframe(df_res, use_container_width=True)
         
         csv_data = df_res.to_csv().encode('utf-8-sig')
         st.download_button(
             label="📥 دریافت فایل خروجی اکسل/CSV",
             data=csv_data,
-            file_name="Monthly_Shift_Schedule.csv",
+            file_name="Shahrivar_1405_Shift_Schedule.csv",
             mime="text/csv"
         )
         
