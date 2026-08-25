@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 
 st.set_page_config(page_title="دشبورد شیفت‌بندی شهریور ۱۴۰۵", page_icon="📅", layout="wide")
 
 st.title("📅 دشبورد هوشمند شیفت‌بندی - شهریور ۱۴۰۵")
-st.caption("سیستم ثبت تعاملی درخواست‌های کارشناسان و بهینه‌سازی خودکار شیفت‌ها")
+st.caption("سیستم دریافت یکجای درخواست کارشناسان و بهینه‌سازی خودکار شیفت‌ها")
 
 # لیست کامل ۲۱ کارشناس
 agents_list = [
@@ -41,56 +42,63 @@ days_list = [f"{d} شهریور ({weekdays[(d - 1) % 7]})" for d in range(1, 32)
 if "requests_list" not in st.session_state:
     st.session_state.requests_list = []
 
-shift_types = ["مرخصی (OFF)", "ترجیح: شیفت صبح (08-16)", "ترجیح: شیفت عصر (14-22)", "عدم امکان شیفت شب"]
-
 # --- نوار سمت راست: تنظیمات سقف آف تفکیک‌شده ---
 st.sidebar.header("⚙️ تنظیمات سقف آف (OFF)")
 
-max_off_midweek = st.sidebar.number_input(
-    "حداکثر آف (شنبه تا چهارشنبه):", 
-    min_value=1, 
-    max_value=15, 
-    value=4,
-    help="حداکثر تعداد کارشناسانی که در روزهای وسط هفته می‌توانند آف یا مرخصی باشند."
-)
-
-max_off_thursday = st.sidebar.number_input(
-    "حداکثر آف (پنج‌شنبه):", 
-    min_value=1, 
-    max_value=15, 
-    value=6,
-    help="حداکثر تعداد کارشناسانی که در روزهای پنج‌شنبه می‌توانند آف باشند."
-)
-
-max_off_friday = st.sidebar.number_input(
-    "حداکثر آف (جمعه):", 
-    min_value=1, 
-    max_value=15, 
-    value=8,
-    help="حداکثر تعداد کارشناسانی که در روزهای جمعه می‌توانند آف باشند."
-)
+max_off_midweek = st.sidebar.number_input("حداکثر آف (شنبه تا چهارشنبه):", min_value=1, max_value=15, value=4)
+max_off_thursday = st.sidebar.number_input("حداکثر آف (پنج‌شنبه):", min_value=1, max_value=15, value=6)
+max_off_friday = st.sidebar.number_input("حداکثر آف (جمعه):", min_value=1, max_value=15, value=8)
 
 st.sidebar.markdown("---")
-st.sidebar.header("📝 ثبت درخواست کارشناس")
+st.sidebar.header("📋 ثبت یکجای کامنت/درخواست‌ها")
 
-with st.sidebar.form(key="request_form", clear_on_submit=True):
-    selected_agent = st.selectbox("انتخاب کارشناس:", agents_list)
-    selected_day = st.selectbox("انتخاب تاریخ:", days_list)
-    req_type = st.selectbox("نوع درخواست:", shift_types)
-    submit_req = st.form_submit_button("➕ ثبت درخواست")
+st.sidebar.caption("💡 نمونه فرمت ورود اطلاعات:")
+st.sidebar.text("Maryam Khojastehpoor: 5 شهریور OFF\nSara Mohsenzadeh: 12 شهریور صبح")
 
-    if submit_req:
-        new_entry = {
-            "نام کارشناس": selected_agent,
-            "تاریخ": selected_day,
-            "نوع درخواست": req_type,
-            "وضعیت": "تاییدشده"
-        }
-        st.session_state.requests_list.append(new_entry)
-        st.success(f"درخواست {selected_agent} برای {selected_day} ثبت شد.")
+bulk_text = st.sidebar.text_area(
+    "کامنت‌ها و درخواست‌ها را یک‌جا وارد کنید:", 
+    height=150,
+    placeholder="نام کارشناس: روز نوع_درخواست\nمثال:\nRazieh Ansari: 10 شهریور OFF\nElahe Zareei: 15 شهریور عصر"
+)
+
+if st.sidebar.button("📥 پردازش و ثبت کلی درخواست‌ها"):
+    lines = bulk_text.strip().split("\n")
+    parsed_count = 0
+    for line in lines:
+        if not line.strip():
+            continue
+        # الگوریتم ساده برای یافتن کارشناس و روز
+        matched_agent = None
+        for agent in agents_list:
+            if agent.lower() in line.lower():
+                matched_agent = agent
+                break
+        
+        # یافتن عدد روز (بین ۱ تا ۳۱)
+        day_match = re.search(r'\b([1-9]|[12][0-9]|3[01])\b', line)
+        matched_day = None
+        if day_match:
+            day_num = int(day_match.group(1))
+            matched_day = days_list[day_num - 1]
+            
+        req_type = "مرخصی (OFF)"
+        if "صبح" in line or "08-16" in line:
+            req_type = "ترجیح: شیفت صبح (08-16)"
+        elif "عصر" in line or "14-22" in line:
+            req_type = "ترجیح: شیفت عصر (14-22)"
+
+        if matched_agent and matched_day:
+            st.session_state.requests_list.append({
+                "نام کارشناس": matched_agent,
+                "تاریخ": matched_day,
+                "نوع درخواست": req_type,
+                "متن اصلی": line.strip()
+            })
+            parsed_count += 1
+            
+    st.sidebar.success(f" تعداد {parsed_count} درخواست با موفقیت استخراج و ثبت شد.")
 
 st.sidebar.markdown("---")
-max_consecutive_days = st.sidebar.slider("حداکثر روز کاری متوالی قبل از آف:", 5, 8, 7)
 solve_button = st.sidebar.button("🚀 محاسبه و تولید شیفت ماهانه", type="primary")
 
 # --- تب‌های اصلی دشبورد ---
@@ -98,7 +106,7 @@ tab1, tab2, tab3 = st.tabs(["📊 تقویم شیفت نهایی", "📋 لیس�
 
 # تب دوم: مدیریت و مشاهده درخواست‌ها
 with tab2:
-    st.subheader("📋 لیست درخواست‌های فعال کارشناسان")
+    st.subheader("📋 لیست کلی درخواست‌های فعال کارشناسان")
     if st.session_state.requests_list:
         df_reqs = pd.DataFrame(st.session_state.requests_list)
         st.dataframe(df_reqs, use_container_width=True)
@@ -107,7 +115,7 @@ with tab2:
             st.session_state.requests_list = []
             st.rerun()
     else:
-        st.info("هنوز هیچ درخواستی ثبت نشده است. از فرم سمت راست می‌توانید درخواست جدید اضافه کنید.")
+        st.info("هنوز هیچ درخواستی ثبت نشده است. از منوی سمت راست می‌توانید درخواست‌ها را به صورت متنی و یک‌جا کپی کنید.")
 
 # الگوریتم تولید شیفت
 if solve_button or st.session_state.requests_list:
@@ -117,7 +125,6 @@ if solve_button or st.session_state.requests_list:
     matrix_data = {}
     
     for day_str in days_list:
-        # تفکیک دقیق روزهای هفته
         if "پنج‌شنبه" in day_str:
             current_max_off = max_off_thursday
         elif "جمعه" in day_str:
@@ -125,10 +132,8 @@ if solve_button or st.session_state.requests_list:
         else:
             current_max_off = max_off_midweek
         
-        # تعیین تعداد آف برای روز جاری بر اساس سقف تعریف‌شده
         target_off_count = min(current_max_off, len(agents_list) - 1)
         
-        # تخصیص شیفت به ۲۱ کارشناس
         day_assignments = []
         off_indices = set(np.random.choice(len(agents_list), size=target_off_count, replace=False))
         
@@ -143,13 +148,13 @@ if solve_button or st.session_state.requests_list:
     df_res = pd.DataFrame(matrix_data, index=agents_list)
     df_res.index.name = "نام کارشناس"
 
-    # اعمال مستقیم درخواست‌های ثبت‌شده روی جدول شیفت
+    # اعمال درخواست‌های ثبت‌شده یک‌جا روی جدول شیفت
     for req in st.session_state.requests_list:
         agent = req["نام کارشناس"]
         day = req["تاریخ"]
         r_type = req["نوع درخواست"]
         
-        if "مرخصی" in r_type:
+        if "OFF" in r_type or "مرخصی" in r_type:
             df_res.loc[agent, day] = "OFF"
         elif "صبح" in r_type:
             df_res.loc[agent, day] = "08-16"
@@ -157,12 +162,7 @@ if solve_button or st.session_state.requests_list:
             df_res.loc[agent, day] = "14-22"
 
     with tab1:
-        st.success(
-            f"✅ شیفت‌بندی شهریور ۱۴۰۵ محاسبه شد | "
-            f"سقف آف: وسط هفته ({max_off_midweek} نفر) | "
-            f"پنج‌شنبه ({max_off_thursday} نفر) | "
-            f"جمعه ({max_off_friday} نفر)"
-        )
+        st.success(f"✅ شیفت‌بندی شهریور ۱۴۰۵ با احتساب تمامی درخواست‌های کلی و سقف‌های آف تفکیک‌شده محاسبه شد.")
         st.subheader("جدول چیدمان شیفت ۲۱ کارشناس در ۳۱ روز شهریور ۱۴۰۵")
         st.dataframe(df_res, use_container_width=True)
         
