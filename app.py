@@ -1,79 +1,47 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-st.set_page_config(page_title="مدیریت شیفت‌های چت و تماس", layout="wide")
+st.set_page_config(page_title="داشبورد مدیریت و شیفت‌بندی پرسنل", layout="wide")
 
-st.title("📋 سامانه مدیریت و برنامه شیفت‌های چت و تماس")
+st.title("🗓️ سامانه جامع مدیریت و برنامه‌ریزی شیفت‌ها")
 
-# لیست کلیه ۲۱ کارشناس
-all_staff = [
-    "Maryam Khojastehpoor", "Parastoo Bolokbashi", "Sara Mohsenzadeh", 
-    "Sahar Heidari", "Niayesh Mahdavi", "Amirmahdi Ghasemi", "Elahe Zareei",
-    "Sedigheh Ebrahimipour", "Leila Heidary", "Tahereh Gholami", 
-    "Fatemeh Yazdani", "Mahsa Kabiri", "Mina Dashti", "Mahboobeh Hasanpour", 
-    "Sorena Fotohi", "Razieh Ansari", "Mahdieh Mardani", "Mahdieh Dehghan", 
-    "Anis Soliemani", "Parastoo Niazi", "Maryam Ahmadii"
-]
-
-default_chat = [
-    "Maryam Khojastehpoor", "Parastoo Bolokbashi", "Sara Mohsenzadeh", 
-    "Sahar Heidari", "Niayesh Mahdavi", "Amirmahdi Ghasemi", "Elahe Zareei"
-]
-
-# پنل جابه‌جایی افراد در ماه‌های مختلف
-st.sidebar.header("⚙️ تنظیمات ماه و جابه‌جایی")
+# تنظیمات ماه و پرسنل در پنل کناری
+st.sidebar.header("⚙️ تنظیمات شیفت‌بندی")
 selected_month = st.sidebar.selectbox("انتخاب ماه:", [
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", 
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
 ])
 
-selected_chat = st.sidebar.multiselect(
-    "کارشناسان بخش چت:", 
-    options=all_staff, 
-    default=default_chat
-)
+num_days = st.sidebar.slider("تعداد روزهای ماه:", min_value=28, max_value=31, value=31)
+num_staff = st.sidebar.number_input("تعداد کل کارشناسان:", min_value=1, max_value=50, value=21)
 
-selected_call = [person for person in all_staff if person not in selected_chat]
+# تولید لیست کارشناسان
+staff_list = [f"کارشناس {i+1}" for i in range(num_staff)]
 
-# ۱. نمایش اعضای دو تیم
-st.subheader(f"👥 تفکیک اعضای تیم برای ماه {selected_month}")
-col1, col2 = st.columns(2)
+st.subheader(f"📊 برنامه شیفت کاری ماه {selected_month} ({num_staff} نفر - {num_days} روز)")
 
-with col1:
-    st.success(f"**بخش چت ({len(selected_chat)} نفر)**")
-    st.dataframe(pd.DataFrame({"کارشناس چت": selected_chat}), use_container_width=True)
+# ساخت فریم داده‌ها برای روزهای ماه
+days_columns = [f"روز {d}" for d in range(1, num_days + 1)]
 
-with col2:
-    st.info(f"**بخش تماس ({len(selected_call)} نفر)**")
-    st.dataframe(pd.DataFrame({"کارشناس تماس": selected_call}), use_container_width=True)
+# تعریف شیفت‌های اولیه
+shift_types = ["صبح", "عصر", "شب", "آف"]
 
+# الگوی توزیع شیفت‌ها
+np.random.seed(42)
+schedule_data = np.random.choice(shift_types, size=(num_staff, num_days))
+
+df = pd.DataFrame(schedule_data, columns=days_columns, index=staff_list)
+
+# نمایش جدول قابل ویرایش تعاملی
+edited_df = st.data_editor(df, use_container_width=True)
+
+# خلاصه وضعیت شیفت‌ها
 st.markdown("---")
+st.subheader("📈 خلاصه وضعیت شیفت‌ها")
 
-# ۲. جدول دقیق شیفت‌های کاری (تولید شیفت‌ها)
-st.subheader(f"📅 جدول برنامه‌ریزی شیفت‌های کاری ماه {selected_month}")
-
-# ایجاد برنامه شیفت‌بندی نمونه بر اساس لیست پویای افراد
-schedule_list = []
-
-# شیفت‌بندی افراد چت
-for i, person in enumerate(selected_chat):
-    shift_type = "صبح چت (07:00 - 15:00)" if i % 2 == 0 else "عصر چت (15:00 - 23:00)"
-    schedule_list.append({
-        "نام کارشناس": person,
-        "بخش": "چت",
-        "عنوان شیفت": shift_type
-    })
-
-# شیفت‌بندی افراد تماس
-for i, person in enumerate(selected_call):
-    shift_type = "صبح تماس (08:00 - 16:00)" if i % 2 == 0 else "عصر تماس (16:00 - 24:00)"
-    schedule_list.append({
-        "نام کارشناس": person,
-        "بخش": "تماس",
-        "عنوان شیفت": shift_type
-    })
-
-df_schedule = pd.DataFrame(schedule_list)
-
-# نمایش جدول اصلی شیفت‌ها
-st.dataframe(df_schedule, use_container_width=True)
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("کل کارشناسان", len(edited_df))
+col2.metric("تعداد شیفت‌های صبح", (edited_df == "صبح").sum().sum())
+col3.metric("تعداد شیفت‌های عصر", (edited_df == "عصر").sum().sum())
+col4.metric("تعداد شیفت‌های شب", (edited_df == "شب").sum().sum())
