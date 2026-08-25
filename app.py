@@ -43,7 +43,34 @@ if "requests_list" not in st.session_state:
 
 shift_types = ["مرخصی (OFF)", "ترجیح: شیفت صبح (08-16)", "ترجیح: شیفت عصر (14-22)", "عدم امکان شیفت شب"]
 
-# --- نوار سمت راست: فرم ثبت درخواست ---
+# --- نوار سمت راست: تنظیمات سقف آف تفکیک‌شده ---
+st.sidebar.header("⚙️ تنظیمات سقف آف (OFF)")
+
+max_off_midweek = st.sidebar.number_input(
+    "حداکثر آف (شنبه تا چهارشنبه):", 
+    min_value=1, 
+    max_value=15, 
+    value=4,
+    help="حداکثر تعداد کارشناسانی که در روزهای وسط هفته می‌توانند آف یا مرخصی باشند."
+)
+
+max_off_thursday = st.sidebar.number_input(
+    "حداکثر آف (پنج‌شنبه):", 
+    min_value=1, 
+    max_value=15, 
+    value=6,
+    help="حداکثر تعداد کارشناسانی که در روزهای پنج‌شنبه می‌توانند آف باشند."
+)
+
+max_off_friday = st.sidebar.number_input(
+    "حداکثر آف (جمعه):", 
+    min_value=1, 
+    max_value=15, 
+    value=8,
+    help="حداکثر تعداد کارشناسانی که در روزهای جمعه می‌توانند آف باشند."
+)
+
+st.sidebar.markdown("---")
 st.sidebar.header("📝 ثبت درخواست کارشناس")
 
 with st.sidebar.form(key="request_form", clear_on_submit=True):
@@ -85,12 +112,38 @@ with tab2:
 # الگوریتم تولید شیفت
 if solve_button or st.session_state.requests_list:
     np.random.seed(42)
-    shift_pool = ["08-16", "09-17", "10-18", "12-20", "14-22", "16-00", "10-14/16-20", "11-15/18-22", "OFF"]
+    work_shifts = ["08-16", "09-17", "10-18", "12-20", "14-22", "16-00", "10-14/16-20", "11-15/18-22"]
     
-    matrix_data = {day: np.random.choice(shift_pool, size=len(agents_list), p=[0.15, 0.12, 0.12, 0.1, 0.12, 0.1, 0.05, 0.04, 0.2]) for day in days_list}
+    matrix_data = {}
+    
+    for day_str in days_list:
+        # تفکیک دقیق روزهای هفته
+        if "پنج‌شنبه" in day_str:
+            current_max_off = max_off_thursday
+        elif "جمعه" in day_str:
+            current_max_off = max_off_friday
+        else:
+            current_max_off = max_off_midweek
+        
+        # تعیین تعداد آف برای روز جاری بر اساس سقف تعریف‌شده
+        target_off_count = min(current_max_off, len(agents_list) - 1)
+        
+        # تخصیص شیفت به ۲۱ کارشناس
+        day_assignments = []
+        off_indices = set(np.random.choice(len(agents_list), size=target_off_count, replace=False))
+        
+        for idx in range(len(agents_list)):
+            if idx in off_indices:
+                day_assignments.append("OFF")
+            else:
+                day_assignments.append(np.random.choice(work_shifts))
+                
+        matrix_data[day_str] = day_assignments
+
     df_res = pd.DataFrame(matrix_data, index=agents_list)
     df_res.index.name = "نام کارشناس"
 
+    # اعمال مستقیم درخواست‌های ثبت‌شده روی جدول شیفت
     for req in st.session_state.requests_list:
         agent = req["نام کارشناس"]
         day = req["تاریخ"]
@@ -104,7 +157,12 @@ if solve_button or st.session_state.requests_list:
             df_res.loc[agent, day] = "14-22"
 
     with tab1:
-        st.success(f"✅ شیفت‌بندی شهریور ۱۴۰۵ با لحاظ کردن {len(st.session_state.requests_list)} درخواست ثبت‌شده محاسبه شد!")
+        st.success(
+            f"✅ شیفت‌بندی شهریور ۱۴۰۵ محاسبه شد | "
+            f"سقف آف: وسط هفته ({max_off_midweek} نفر) | "
+            f"پنج‌شنبه ({max_off_thursday} نفر) | "
+            f"جمعه ({max_off_friday} نفر)"
+        )
         st.subheader("جدول چیدمان شیفت ۲۱ کارشناس در ۳۱ روز شهریور ۱۴۰۵")
         st.dataframe(df_res, use_container_width=True)
         
