@@ -52,51 +52,82 @@ max_off_friday = st.sidebar.number_input("حداکثر آف (جمعه):", min_va
 st.sidebar.markdown("---")
 st.sidebar.header("📋 ثبت یکجای کامنت/درخواست‌ها")
 
-st.sidebar.caption("💡 نمونه فرمت ورود اطلاعات:")
-st.sidebar.text("Maryam Khojastehpoor: 5 شهریور OFF\nSara Mohsenzadeh: 12 شهریور صبح")
+st.sidebar.caption("💡 نمونه فرمت ورود اطلاعات (فارسی، انگلیسی، اسم کوچک یا نام کامل):")
+st.sidebar.text("Maryam Khojastehpoor: 5 شهریور OFF\nRazieh: 10 شهریور صبح\nZareei: ۱۵ شهریور عصر")
 
 bulk_text = st.sidebar.text_area(
     "کامنت‌ها و درخواست‌ها را یک‌جا وارد کنید:", 
     height=150,
-    placeholder="نام کارشناس: روز نوع_درخواست\nمثال:\nRazieh Ansari: 10 شهریور OFF\nElahe Zareei: 15 شهریور عصر"
+    placeholder="نام کارشناس: روز نوع_درخواست\nمثال:\nRazieh Ansari: 10 شهریور OFF\nElahe: ۱۵ شهریور 14-22"
 )
 
+# --- الگوریتم هوشمند پردازش و استخراج درخواست‌ها ---
 if st.sidebar.button("📥 پردازش و ثبت کلی درخواست‌ها"):
     lines = bulk_text.strip().split("\n")
     parsed_count = 0
+    
+    # نقشه تبدیل و تشخیص هوشمند شیفت‌ها و کلمات کلیدی
+    shift_patterns = {
+        "OFF": ["off", "آف", "مرخصی", "تعطیل"],
+        "08-16": ["08-16", "8-16", "۸-۱۶", "صبح"],
+        "09-17": ["09-17", "9-17", "۹-۱۷"],
+        "10-18": ["10-18", "۱۰-۱۸"],
+        "12-20": ["12-20", "۱۲-۲۰"],
+        "14-22": ["14-22", "14-22", "۱۴-۲۲", "عصر"],
+        "16-00": ["16-00", "16-24", "۱۶-۰۰", "شب"],
+        "10-14/16-20": ["10-14/16-20", "دو پارت", "دونوبه‌"],
+        "11-15/18-22": ["11-15/18-22"]
+    }
+
     for line in lines:
         if not line.strip():
             continue
-        # الگوریتم ساده برای یافتن کارشناس و روز
+        
+        # ۱. یافتن نام کارشناس (بررسی نام کامل، فامیلی و نام کوچک)
         matched_agent = None
+        clean_line = line.lower().replace(" ", "").replace("‌", "")
         for agent in agents_list:
-            if agent.lower() in line.lower():
+            clean_agent = agent.lower().replace(" ", "")
+            first_name = agent.split()[0].lower()
+            last_name = agent.split()[-1].lower() if len(agent.split()) > 1 else ""
+            
+            if clean_agent in clean_line or first_name in clean_line or (last_name and last_name in clean_line):
                 matched_agent = agent
                 break
         
-        # یافتن عدد روز (بین ۱ تا ۳۱)
-        day_match = re.search(r'\b([1-9]|[12][0-9]|3[01])\b', line)
+        # ۲. تبدیل اعداد فارسی/عربی به انگلیسی و استخراج عدد روز (۱ تا ۳۱)
+        persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+        english_digits = "0123456789"
+        trans_table = str.maketrans(persian_digits, english_digits)
+        normalized_line = line.translate(trans_table)
+        
+        day_match = re.search(r'\b([1-9]|[12][0-9]|3[01])\b', normalized_line)
         matched_day = None
         if day_match:
             day_num = int(day_match.group(1))
             matched_day = days_list[day_num - 1]
             
-        req_type = "مرخصی (OFF)"
-        if "صبح" in line or "08-16" in line:
-            req_type = "ترجیح: شیفت صبح (08-16)"
-        elif "عصر" in line or "14-22" in line:
-            req_type = "ترجیح: شیفت عصر (14-22)"
+        # ۳. تشخیص نوع شیفت درخواست‌شده
+        detected_shift = None
+        for shift_code, keywords in shift_patterns.items():
+            if any(kw in line.lower() for kw in keywords):
+                detected_shift = shift_code
+                break
+        
+        if not detected_shift:
+            detected_shift = "OFF"  # حالت پیش‌فرض در صورت ذکر نکردن نوع شیفت دقیق
 
+        # ثبت نهایی درخواست در Session State
         if matched_agent and matched_day:
             st.session_state.requests_list.append({
                 "نام کارشناس": matched_agent,
                 "تاریخ": matched_day,
-                "نوع درخواست": req_type,
+                "نوع درخواست": detected_shift,
                 "متن اصلی": line.strip()
             })
             parsed_count += 1
             
-    st.sidebar.success(f" تعداد {parsed_count} درخواست با موفقیت استخراج و ثبت شد.")
+    st.sidebar.success(f"تعداد {parsed_count} درخواست با موفقیت استخراج و ثبت شد.")
 
 st.sidebar.markdown("---")
 solve_button = st.sidebar.button("🚀 محاسبه و تولید شیفت ماهانه", type="primary")
@@ -148,18 +179,13 @@ if solve_button or st.session_state.requests_list:
     df_res = pd.DataFrame(matrix_data, index=agents_list)
     df_res.index.name = "نام کارشناس"
 
-    # اعمال درخواست‌های ثبت‌شده یک‌جا روی جدول شیفت
+    # اعمال دقیق درخواست‌های ثبت‌شده روی جدول شیفت‌ها
     for req in st.session_state.requests_list:
         agent = req["نام کارشناس"]
         day = req["تاریخ"]
         r_type = req["نوع درخواست"]
         
-        if "OFF" in r_type or "مرخصی" in r_type:
-            df_res.loc[agent, day] = "OFF"
-        elif "صبح" in r_type:
-            df_res.loc[agent, day] = "08-16"
-        elif "عصر" in r_type:
-            df_res.loc[agent, day] = "14-22"
+        df_res.loc[agent, day] = r_type
 
     with tab1:
         st.success(f"✅ شیفت‌بندی شهریور ۱۴۰۵ با احتساب تمامی درخواست‌های کلی و سقف‌های آف تفکیک‌شده محاسبه شد.")
